@@ -1,6 +1,32 @@
 # Ping Pong Multiplayer Game - Design Document
 
-## Overview
+# Estimation
+
+**Time Estimation**  
+The project will be developed in the following phases:
+
+| Phase                                        | Estimated Time |
+|---------------------------------------------|----------------|
+| Requirement Analysis                         | 2 hours        |
+| System Design                                | 2 hours        |
+| Environment Setup                            | 1 hour         |
+| Development                                  | 2 days         |
+| &nbsp;&nbsp;&nbsp;&nbsp;- Keycloak Integration (Login + Token Handling) | 2 hours        |
+| &nbsp;&nbsp;&nbsp;&nbsp;- ASP.NET Web API Setup (Controllers, DI, etc.) | 2 hours        |
+| &nbsp;&nbsp;&nbsp;&nbsp;- PostgreSQL Schema & EF Core Setup            | 2 hours        |
+| &nbsp;&nbsp;&nbsp;&nbsp;- User Module (Auth Middleware)       | 1.5 hours      |
+| &nbsp;&nbsp;&nbsp;&nbsp;- Game Score Module (Save + History)           | 2 hours        |
+| &nbsp;&nbsp;&nbsp;&nbsp;- Leaderboard Endpoint                         | 1.5 hours      |
+| &nbsp;&nbsp;&nbsp;&nbsp;- WPF Integration (Token-based API Calls)      | 2.5 hours      |
+| Testing                                        | 2 hours        |
+| Multi-Window Local Simulation (Multi-user)     | 1 hour         |
+| Deployment & Debugging                         | 3 hours        |
+| **Total Estimated Time**                       | **3 days**     |
+
+
+---
+
+## Design
 
 This document outlines the design and implementation strategy for extending the existing WPF-based Ping Pong game into a multi-user system with centralized authentication, persistent data storage, and asynchronous gameplay. The new system leverages ASP.NET Web API, PostgreSQL, and Keycloak to replace the existing local CSV-based solution.
 
@@ -43,12 +69,73 @@ This document outlines the design and implementation strategy for extending the 
   - `POST /api/user/register`
   - `POST /api/user/login`
 ### Frontend (WPF Game Client)
-- Login via Keycloak (using embedded browser or external login).
+- Login via Keycloak.
 - Communicates with Web API for:
-  - Starting/ending games
+  - ending games
   - Saving scores
   - Fetching user history and leaderboard
 - Supports multiple windows for multi-user testing.
+
+---
+## Database design
+![database_design](https://github.com/user-attachments/assets/59648401-dbba-47bf-89af-6ba5afbfa3c2)
+
+## 🔄 How Data Is Processed
+
+### 1. **User Authentication (via Keycloak)**
+- WPF app shows a login screen.
+- User enters username and password.
+- Credentials are sent to **Keycloak**.
+- On success, Keycloak returns:
+  - **Access Token** (short-lived)
+  - **Refresh Token** (used to get new access tokens)
+- WPF app stores both tokens locally in memory.
+
+---
+
+### 2. **Calling the ASP.NET API**
+- WPF sends API requests (e.g., `GET /api/leaderboard`) with the `Access Token` in the `Authorization` header:
+
+
+  ```
+  Authorization: Bearer <access_token>
+  ```
+
+  
+- ASP.NET validates the token via **JWT middleware** using Keycloak’s public keys.
+- The token contains a claim `sub`, which is the **Keycloak User ID**.
+
+---
+
+### 3. **Mapping Game Data to Users**
+- The backend extracts the `sub` claim (`keycloak_id`) from the token.
+- It looks up the user in the database using this `keycloak_id`.
+- Game data (like scores, play history, etc.) is stored and associated with the `user.id` (which is either the same as `keycloak_id`, or linked to it).
+
+---
+
+### 4. **Saving Game History**
+- After each game, the WPF client sends a request like `POST /api/games/save`.
+- The payload includes:
+
+  
+  ```json
+  {
+    "score": 280,
+    "duration": "00:02:30",
+    "played_at": "2025-06-03T10:23:00Z"
+  }
+  ```
+  
+- The API links this to the authenticated user and saves it in the `game_scores` table.
+
+---
+
+### 5. **Leaderboard Generation**
+- WPF app calls `GET /api/leaderboard`.
+- The API runs a query (e.g., max score per user).
+- Returns the top users with their scores.
+- WPF displays this in a table view.
 
 ---
 
